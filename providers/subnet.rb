@@ -1,4 +1,5 @@
 include Chef::Mixin::PowershellOut
+include WindowsAd::Helper
 
 use_inline_resources
 
@@ -13,11 +14,6 @@ action :create do
     converge_by("Create AD subnet #{@new_resource}") do
       # New-ADReplicationSubnet [-Name] <String> [[-Site] <ADReplicationSite> ] [-AuthType <ADAuthType> {Negotiate | Basic} ] [-Credential <PSCredential> ] [-Description <String> ] [-Instance <ADReplicationSubnet> ] [-Location <String> ] [-OtherAttributes <Hashtable> ] [-PassThru] [-Server <String> ] [-Confirm] [-WhatIf] [ <CommonParameters>]
       cmd_text = "New-ADReplicationSubnet #{@new_resource.name}"
-
-      if !@new_resource.domain_user.nil? && !@new_resource.domain_user.empty? &&
-         !@new_resource.domain_pass.nil? && !@new_resource.domain_pass.empty?
-        cmd_text = create_ps_credential(@new_resource.domain_user, @new_resource.domain_pass) + cmd_text + " -Credential $mycreds"
-      end
 
       if !@new_resource.site.nil?
         cmd_text << " -Site '#{@new_resource.site}'"
@@ -44,7 +40,31 @@ action :create do
 end
 
 action :delete do
+  if !@current_resource.exists
+    Chef::Log.debug("#{@new_resource} doesn't exist.")
+  else
+    converge_by("Delete AD subnet #{@new_resource}") do
+      # Remove-ADReplicationSubnet [-Identity] <ADReplicationSubnet> [-AuthType <ADAuthType> {Negotiate | Basic} ] [-Credential <PSCredential> ] [-Server <String> ] [-Confirm] [-WhatIf] [ <CommonParameters>]
+      cmd_text = "Remove-ADReplicationSubnet #{@new_resource.name} -Confirm:$false"
 
+      @new_resource.options.each do |option, value|
+        if value.nil?
+          cmd_text << " -#{option}"
+        else
+          cmd_text << " -#{option} '#{value}'"
+        end
+      end
+
+      cmd = powershell_out(cmd_text)
+      Chef::Log.debug("#{@new_resource} delete subnet output: #{cmd.stdout}")
+      if !cmd.stderr.empty?
+        Chef::Log.error("Error deleting subnet site: #{cmd.stderr}")
+      else
+        Chef::Log.info("#{@new_resource} deleted successfully.")
+        new_resource.updated_by_last_action(true)
+      end
+    end
+  end
 end
 
 def load_current_resource
@@ -67,16 +87,4 @@ def load_current_resource
     @current_resource.distinguished_name = subnet['DistinguishedName']
     @current_resource.exists = true
   end
-end
-
-private
-def strip_carriage_returns (output)
-  output.gsub(/\r/, '')
-end
-
-def create_ps_credential(user, pass)
-  return <<-EOH
-  $secpasswd = ConvertTo-SecureString '#{pass}' -AsPlainText -Force
-  $mycreds = New-Object System.Management.Automation.PSCredential ('#{user}', $secpasswd)
-  EOH
 end
