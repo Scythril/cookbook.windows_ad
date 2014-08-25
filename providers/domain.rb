@@ -81,34 +81,27 @@ action :delete do
 end
 
 action :join do
-  if exists?
-    Chef::Log.error("The domain does not exist or was not reachable, please check your network settings")
+  if computer_exists?
+    Chef::Log.debug("The computer is already joined to the domain")
     new_resource.updated_by_last_action(false)
   else
-    if computer_exists?
-      Chef::Log.debug("The computer is already joined to the domain")
-      new_resource.updated_by_last_action(false)
-    else
-      powershell_script "join_#{new_resource.name}" do
-        if node[:os_version] >= "6.2"
-          code <<-EOH
-            $secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force
-            $mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd)
-            Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Force:$true -Restart
-          EOH
-        else
-          code <<-EOH
-            $secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force
-            $mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd)
-            Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Restart
-          EOH
-        end
+    powershell_script "join_#{new_resource.name}" do
+      if node[:os_version] >= "6.2"
+        code <<-EOH
+          $secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force
+          $mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd)
+          Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Force:$true -Restart
+        EOH
+      else
+        code <<-EOH
+          $secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force
+          $mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd)
+          Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Restart
+        EOH
       end
-
-    new_resource.updated_by_last_action(false)
     end
 
-    new_resource.updated_by_last_action(true)
+  new_resource.updated_by_last_action(false)
   end
 end
 
