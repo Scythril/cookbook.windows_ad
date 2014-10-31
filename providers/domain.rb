@@ -27,14 +27,27 @@
 
 require 'mixlib/shellout'
 
+
 action :create do
+  
   if exists?
     new_resource.updated_by_last_action(false)
   else
-    cmd = create_command
-    cmd << " -DomainName #{new_resource.name}"
-    cmd << " -SafeModeAdministratorPassword (convertto-securestring '#{new_resource.safe_mode_pass}' -asplaintext -Force)"
-    cmd << " -Force:$true"
+    if node[:os_version] >= "6.2"
+      cmd = "$secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force;"
+      cmd << "$mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd);"
+      cmd << create_command
+      cmd << " -DomainName #{new_resource.name}"
+      cmd << " -SafeModeAdministratorPassword (convertto-securestring '#{new_resource.safe_mode_pass}' -asplaintext -Force)"
+      cmd << " -Force:$true"
+    else node[:os_version] <= "6.1"
+      cmd = "dcpromo -unattend"
+      cmd << " -newDomain:#{new_resource.type}"
+      cmd << " -NewDomainDNSName:#{new_resource.name}"
+      cmd << " -RebootOnCompletion:Yes"
+      cmd << " -SafeModeAdminPassword:(convertto-securestring '#{new_resource.safe_mode_pass}' -asplaintext -Force)"
+      cmd << " -ReplicaOrNewDomain:#{new_resource.replica_type}"
+    end
 
     new_resource.options.each do |option, value|
       if value.nil?
@@ -97,11 +110,7 @@ action :join do
             Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Force:$true -Restart
           EOH
         else
-          code <<-EOH
-            $secpasswd = ConvertTo-SecureString '#{new_resource.domain_pass}' -AsPlainText -Force
-            $mycreds = New-Object System.Management.Automation.PSCredential  ('#{new_resource.domain_user}', $secpasswd)
-            Add-Computer -DomainName #{new_resource.name} -Credential $mycreds -Restart
-          EOH
+          code "netdom join #{node[:hostname]} /d #{new_resource.name} /ud:#{new_resource.domain_user} /pd:#{new_resource.domain_pass} /reboot"
         end
       end
 
@@ -146,14 +155,27 @@ def last_dc?
 end
 
 def create_command
-  case new_resource.type
-  when "forest"
-    "Install-ADDSForest"
-  when "domain"
-    "install-ADDSDomain"
-  when "replica"
-    "Install-ADDSDomainController"
-  when "read-only"
-    "Add-ADDSReadOnlyDomainControllerAccount"
+  if node[:os_version] > '6.2'
+    case new_resource.type
+      when "forest"
+        "Install-ADDSForest"
+      when "domain"
+        "install-ADDSDomain -Credential $mycreds"
+      when "replica"
+        "Install-ADDSDomainController -Credential $mycreds"
+      when "read-only"
+        "Add-ADDSReadOnlyDomainControllerAccount -Credential $mycreds"
+  end
+  else
+    case new_resource.type
+      when "forest"
+        "forest"
+      when "domain"
+        "domain"
+      when "read-only"
+        "domain"
+      when "replica"
+        "replica"
+    end
   end
 end
