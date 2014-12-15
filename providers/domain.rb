@@ -142,8 +142,8 @@ action :unjoin do
 end
 
 def ou_dn
-  ou_name << new_resource.ou.split("/").reverse.map { |k| "OU=#{k}" }.join(",") << ","
-  ou_name << new_resource.name.split(".").map! { |k| "DC=#{k}" }.join(",")
+  ou_dn << new_resource.ou.split("/").reverse.map { |k| "OU=#{k}" }.join(",") << ","
+  ou_dn << new_resource.name.split(".").map! { |k| "DC=#{k}" }.join(",")
 end
 
 def exists?
