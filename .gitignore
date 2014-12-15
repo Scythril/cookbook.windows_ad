@@ -10,3 +10,4 @@ Gemfile.lock
 options.txt
 recipes/contoso.rb
 Vagrantfile
+metadata.json
