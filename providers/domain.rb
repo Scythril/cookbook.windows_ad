@@ -27,6 +27,7 @@
 
 require 'mixlib/shellout'
 
+ENUM_NAMES = %w{Win2003 Win2008 Win2008R2 Win2012 Win2012R2 Default}
 
 action :create do
 
@@ -47,13 +48,7 @@ action :create do
       cmd << " -ReplicaOrNewDomain:#{new_resource.replica_type}"
     end
 
-    new_resource.options.each do |option, value|
-      if value.nil?
-        cmd << " -#{option}"
-      else
-        cmd << " -#{option} '#{value}'"
-      end
-    end
+    cmd << format_options(new_resource.options)
 
     powershell_script "create_domain_#{new_resource.name}" do
       code cmd
@@ -73,13 +68,7 @@ action :delete do
       cmd << " -DemoteOperationMasterRole"
     end
 
-    new_resource.options.each do |option, value|
-      if value.nil?
-        cmd << " -#{option}"
-      else
-        cmd << " -#{option} '#{value}'"
-      end
-    end
+    cmd << format_options(new_resource.options)
 
     powershell_script "remove_domain_#{new_resource.name}" do
       code cmd
@@ -154,7 +143,8 @@ end
 
 def computer_exists?
   comp = Mixlib::ShellOut.new("powershell.exe -command \"get-wmiobject -class win32_computersystem -computername . | select domain\"").run_command
-  comp.stdout.include?(new_resource.name) or comp.stdout.include?(new_resource.name.upcase)
+  stdout = comp.stdout.downcase
+  stdout.include?(new_resource.name.downcase) or stdout.include?(new_resource.name.downcase)
 end
 
 def last_dc?
@@ -189,6 +179,18 @@ def create_command
         "domain"
       when "replica"
         "replica"
+    end
+  end
+end
+
+def format_options(options)
+  options.reduce('') do |cmd, (option, value)|
+    if value.nil?
+      cmd << " -#{option}"
+    elsif ENUM_NAMES.include?(value) || value.is_a?(Numeric)
+      cmd << " -#{option} #{value}"
+    else
+      cmd << " -#{option} '#{value}'"
     end
   end
 end
